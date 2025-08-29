@@ -11,6 +11,14 @@ local isRecording = false
 local recordedFrames = {}
 local savedRecordings = {}
 local menuVisible = true
+local recordStartTime = 0
+
+-- Timer
+local function formatTime(seconds)
+    local mins = math.floor(seconds/60)
+    local secs = math.floor(seconds%60)
+    return string.format("%02d:%02d", mins, secs)
+end
 
 -- Feedback visual
 local function showNotification(text,color)
@@ -40,6 +48,7 @@ end
 local function startRecording()
     isRecording = true
     recordedFrames = {}
+    recordStartTime = tick()
     showNotification("🎬 Gravação iniciada",Color3.fromRGB(70,130,180))
 end
 
@@ -48,15 +57,19 @@ local function stopRecording()
     showNotification("⏹ Gravação parada",Color3.fromRGB(220,50,50))
 end
 
+-- Reprodução respeitando o tempo
 local function playRecording(frames,loop)
-    if not frames or #frames == 0 then return end
+    if not frames or #frames==0 then return end
     showNotification("▶ Reproduzindo gravação",Color3.fromRGB(50,220,50))
     task.spawn(function()
         repeat
+            local startTime = tick()
             for i,frame in ipairs(frames) do
                 local waitTime = 0
-                if i>1 then waitTime=frame.Time-frames[i-1].Time end
-                task.wait(waitTime)
+                if i>1 then waitTime = frame.Time - frames[i-1].Time end
+                local elapsed = tick()-startTime
+                local delta = waitTime - elapsed
+                if delta>0 then task.wait(delta) end
                 if frame.Type=="Camera" then
                     Camera.CFrame = frame.CFrame
                 elseif frame.Type=="Click" then
@@ -86,87 +99,45 @@ UserInputService.InputBegan:Connect(function(input,gpe)
     end
 end)
 
---// GUI
+--// GUI Premium
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
+-- Frame principal
 local Frame = Instance.new("Frame")
-Frame.Size=UDim2.new(0,360,0,520)
-Frame.Position=UDim2.new(0.5,-180,0.5,-260)
-Frame.BackgroundColor3=Color3.fromRGB(30,30,30)
-Frame.BorderSizePixel=0
-Frame.Parent=ScreenGui
+Frame.Size = UDim2.new(0,380,0,550)
+Frame.Position = UDim2.new(0.5,-190,0.5,-275)
+Frame.BackgroundColor3 = Color3.fromRGB(28,28,28)
+Frame.BorderSizePixel = 0
+Frame.Parent = ScreenGui
 local UICorner = Instance.new("UICorner",Frame)
-UICorner.CornerRadius=UDim.new(0,16)
+UICorner.CornerRadius = UDim.new(0,18)
 local UIStroke = Instance.new("UIStroke",Frame)
 UIStroke.Thickness=2
-UIStroke.Color=Color3.fromRGB(80,80,80)
+UIStroke.Color=Color3.fromRGB(90,90,90)
 
--- Drag da GUI
-local dragging=false
-local dragInput,mousePos,framePos
-local function update(input)
-    local delta = input.Position - mousePos
-    Frame.Position = UDim2.new(0,framePos.X+delta.X,0,framePos.Y+delta.Y)
-end
-Frame.InputBegan:Connect(function(input)
-    if input.UserInputType==Enum.UserInputType.MouseButton1 then
-        dragging=true
-        mousePos=input.Position
-        framePos=Frame.Position
-        input.Changed:Connect(function()
-            if input.UserInputState==Enum.UserInputState.End then dragging=false end
-        end)
+-- Timer Label
+local TimerLabel = Instance.new("TextLabel")
+TimerLabel.Size=UDim2.new(0.4,0,0,36)
+TimerLabel.Position=UDim2.new(0.05,0,0,60)
+TimerLabel.BackgroundTransparency=1
+TimerLabel.Text="00:00"
+TimerLabel.TextColor3=Color3.fromRGB(255,255,255)
+TimerLabel.TextSize=20
+TimerLabel.Font=Enum.Font.GothamBold
+TimerLabel.TextXAlignment=Enum.TextXAlignment.Left
+TimerLabel.Parent=Frame
+
+-- Atualizar timer
+spawn(function()
+    while true do
+        if isRecording then
+            local elapsed = tick()-recordStartTime
+            TimerLabel.Text=formatTime(elapsed)
+        end
+        task.wait(0.2)
     end
 end)
-Frame.InputChanged:Connect(function(input)
-    if input.UserInputType==Enum.UserInputType.MouseMovement then
-        dragInput=input
-    end
-end)
-UserInputService.InputChanged:Connect(function(input)
-    if input==dragInput and dragging then update(input) end
-end)
-
--- Título
-local Title=Instance.new("TextLabel")
-Title.Parent=Frame
-Title.Size=UDim2.new(1,0,0,50)
-Title.Position=UDim2.new(0,0,0,0)
-Title.BackgroundColor3=Color3.fromRGB(45,45,45)
-Title.Text="🎥 Recorder Pro Ultimate"
-Title.TextColor3=Color3.fromRGB(255,255,255)
-Title.TextSize=24
-Title.Font=Enum.Font.GothamBold
-local cornerTitle=Instance.new("UICorner",Title)
-cornerTitle.CornerRadius=UDim.new(0,16)
-
--- Botão minimizar
-local MinBtn=Instance.new("TextButton")
-MinBtn.Parent=Title
-MinBtn.Size=UDim2.new(0,36,0,36)
-MinBtn.Position=UDim2.new(1,-42,0.5,-18)
-MinBtn.BackgroundColor3=Color3.fromRGB(60,60,60)
-MinBtn.Text="-"
-MinBtn.TextColor3=Color3.fromRGB(255,255,255)
-MinBtn.Font=Enum.Font.GothamBold
-MinBtn.TextSize=24
-local cornerMin=Instance.new("UICorner",MinBtn)
-cornerMin.CornerRadius=UDim.new(0,10)
-
--- Botão flutuante
-local FloatBtn=Instance.new("TextButton")
-FloatBtn.Parent=ScreenGui
-FloatBtn.Size=UDim2.new(0,64,0,64)
-FloatBtn.Position=UDim2.new(1,-80,1,-140)
-FloatBtn.BackgroundColor3=Color3.fromRGB(45,45,45)
-FloatBtn.Text="⚙"
-FloatBtn.TextColor3=Color3.fromRGB(255,255,255)
-FloatBtn.Font=Enum.Font.GothamBold
-FloatBtn.TextSize=32
-FloatBtn.Visible=false
-local cornerFloat=Instance.new("UICorner",FloatBtn)
-cornerFloat.CornerRadius=UDim.new(1,0)
 
 -- Função criar botão premium
 local function createButton(parent,text,posY,callback)
@@ -182,8 +153,6 @@ local function createButton(parent,text,posY,callback)
     btn.Parent=parent
     local corner=Instance.new("UICorner",btn)
     corner.CornerRadius=UDim.new(0,12)
-
-    -- Animação clique
     btn.MouseButton1Click:Connect(function()
         btn.BackgroundColor3=Color3.fromRGB(90,90,90)
         task.wait(0.08)
@@ -194,38 +163,27 @@ local function createButton(parent,text,posY,callback)
 end
 
 -- Botões principais
-createButton(Frame,"▶ Gravar",60,function() startRecording() end)
-createButton(Frame,"■ Parar",120,function() stopRecording() end)
-createButton(Frame,"▶ Play",180,function() playRecording(recordedFrames,false) end)
-createButton(Frame,"⟳ Loop",240,function() playRecording(recordedFrames,true) end)
+createButton(Frame,"▶ Gravar",110,function() startRecording() end)
+createButton(Frame,"■ Parar",170,function() stopRecording() end)
+createButton(Frame,"▶ Reproduzir",230,function() playRecording(recordedFrames,false) end)
+createButton(Frame,"⟳ Reproduzir Infinitamente",290,function() playRecording(recordedFrames,true) end)
 
 -- Input salvar
-local SaveBox=Instance.new("TextBox")
-SaveBox.Parent=Frame
+local SaveBox = Instance.new("TextBox")
+SaveBox.Parent = Frame
 SaveBox.Size=UDim2.new(0.9,0,0,40)
-SaveBox.Position=UDim2.new(0.05,0,0,300)
+SaveBox.Position=UDim2.new(0.05,0,0,350)
 SaveBox.PlaceholderText="Nome da gravação..."
 SaveBox.TextColor3=Color3.fromRGB(255,255,255)
 SaveBox.BackgroundColor3=Color3.fromRGB(50,50,50)
 local cornerInput=Instance.new("UICorner",SaveBox)
 cornerInput.CornerRadius=UDim.new(0,12)
 
--- Botão salvar
-createButton(Frame,"💾 Salvar",360,function()
-    local name=SaveBox.Text
-    if name~="" and #recordedFrames>0 then
-        savedRecordings[name]=table.clone(recordedFrames)
-        SaveBox.Text=""
-        refreshList()
-        showNotification("💾 Gravação salva: "..name)
-    end
-end)
-
--- Lista de gravações
+-- Lista gravações
 local Scroll=Instance.new("ScrollingFrame")
 Scroll.Parent=Frame
-Scroll.Size=UDim2.new(0.9,0,0,140)
-Scroll.Position=UDim2.new(0.05,0,0,420)
+Scroll.Size=UDim2.new(0.9,0,0,160)
+Scroll.Position=UDim2.new(0.05,0,0,410)
 Scroll.BackgroundColor3=Color3.fromRGB(35,35,35)
 Scroll.ScrollBarThickness=8
 local UIList=Instance.new("UIListLayout",Scroll)
@@ -253,57 +211,51 @@ function refreshList()
         label.TextSize=16
         label.Parent=item
 
-        -- Play
         local playBtn=Instance.new("TextButton")
         playBtn.Size=UDim2.new(0.13,0,1,0)
         playBtn.Position=UDim2.new(0.55,0,0,0)
         playBtn.Text="▶"
         playBtn.TextColor3=Color3.fromRGB(255,255,255)
         playBtn.BackgroundColor3=Color3.fromRGB(70,130,70)
-        local c1=Instance.new("UICorner",playBtn)
-        c1.CornerRadius=UDim.new(0,8)
+        local c1=Instance.new("UICorner",playBtn);c1.CornerRadius=UDim.new(0,8)
         playBtn.Parent=item
         playBtn.MouseButton1Click:Connect(function() playRecording(frames,false) end)
 
-        -- Loop individual
         local loopBtn=Instance.new("TextButton")
         loopBtn.Size=UDim2.new(0.13,0,1,0)
         loopBtn.Position=UDim2.new(0.68,0,0,0)
         loopBtn.Text="⟳"
         loopBtn.TextColor3=Color3.fromRGB(255,255,255)
         loopBtn.BackgroundColor3=Color3.fromRGB(180,90,90)
-        local c2=Instance.new("UICorner",loopBtn)
-        c2.CornerRadius=UDim.new(0,8)
+        local c2=Instance.new("UICorner",loopBtn);c2.CornerRadius=UDim.new(0,8)
         loopBtn.Parent=item
         loopBtn.MouseButton1Click:Connect(function() playRecording(frames,true) end)
 
-        -- Deletar
         local delBtn=Instance.new("TextButton")
         delBtn.Size=UDim2.new(0.1,0,1,0)
         delBtn.Position=UDim2.new(0.81,0,0,0)
         delBtn.Text="❌"
         delBtn.TextColor3=Color3.fromRGB(255,255,255)
         delBtn.BackgroundColor3=Color3.fromRGB(150,50,50)
-        local c3=Instance.new("UICorner",delBtn)
-        c3.CornerRadius=UDim.new(0,8)
+        local c3=Instance.new("UICorner",delBtn);c3.CornerRadius=UDim.new(0,8)
         delBtn.Parent=item
         delBtn.MouseButton1Click:Connect(function()
             savedRecordings[name]=nil
             refreshList()
         end)
+
         y=y+48
     end
     Scroll.CanvasSize=UDim2.new(0,0,y)
 end
 
--- Minimizar / flutuante
-MinBtn.MouseButton1Click:Connect(function()
-    menuVisible=false
-    Frame.Visible=false
-    FloatBtn.Visible=true
+-- Salvar botão
+createButton(Frame,"💾 Salvar Gravação",350,function()
+    local name=SaveBox.Text
+    if name~="" and #recordedFrames>0 then
+        savedRecordings[name]=table.clone(recordedFrames)
+        SaveBox.Text=""
+        refreshList()
+        showNotification("💾 Gravação salva: "..name)
+    end
 end)
-FloatBtn.MouseButton1Click:Connect(function()
-    menuVisible=true
-    Frame.Visible=true
-
-   
