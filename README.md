@@ -1,251 +1,55 @@
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
-local LocalPlayer = Players.LocalPlayer
-local Camera = workspace.CurrentCamera
-local Vim = game:GetService("VirtualInputManager")
+local P,RS,UIS,TS,LP,C,Vim=game:GetService("Players"),game:GetService("RunService"),game:GetService("UserInputService"),game:GetService("TweenService"),game.Players.LocalPlayer,workspace.CurrentCamera,game:GetService("VirtualInputManager")
+local isRec=false;local frames={};local recStart=0;local saved={}
 
--- Variáveis
-local isRecording = false
-local recordedFrames = {}
-local savedRecordings = {}
-local recordStartTime = 0
+local function fmtTime(s)local m=math.floor(s/60) local sec=math.floor(s%60)return string.format("%02d:%02d",m,sec)end
+local function notif(txt,col)local n=Instance.new("TextLabel") n.Size=UDim2.new(0,220,0,40) n.Position=UDim2.new(0.5,-110,0.1,0) n.BackgroundColor3=col or Color3.fromRGB(70,70,70) n.TextColor3=Color3.new(1,1,1) n.Text=txt n.TextSize=18 n.Font=Enum.Font.GothamBold n.BackgroundTransparency=0.1 n.Parent=LP:WaitForChild("PlayerGui") local c=Instance.new("UICorner",n) c.CornerRadius=UDim.new(0,12) TS:Create(n,TweenInfo.new(0.5),{Position=UDim2.new(0.5,-110,0.05,0)}):Play() task.delay(1.5,function() TS:Create(n,TweenInfo.new(0.5),{Position=UDim2.new(0.5,-110,0.01,0);Transparency=1}):Play() task.wait(0.5)n:Destroy() end)end
 
--- Timer
-local function formatTime(seconds)
-    local mins = math.floor(seconds/60)
-    local secs = math.floor(seconds%60)
-    return string.format("%02d:%02d", mins, secs)
-end
+local function startRec() isRec=true;frames={};recStart=tick();notif("🎬 Gravação iniciada",Color3.fromRGB(70,130,180)) end
+local function stopRec() isRec=false;notif("⏹ Gravação parada",Color3.fromRGB(220,50,50)) end
+local function playRec(f,loop) if not f or #f==0 then return end task.spawn(function() repeat local st=tick() for i,fr in ipairs(f) do local w=(i>1 and fr.Time-f[i-1].Time) or 0 local delta=w-(tick()-st) if delta>0 then task.wait(delta) end if fr.Type=="Camera" then C.CFrame=fr.CFrame elseif fr.Type=="Click" then if fr.GuiObject then local p=fr.GuiObject.AbsolutePosition+fr.GuiObject.AbsoluteSize/2 Vim:SendMouseButtonEvent(p.X,p.Y,0,true,game,1) task.wait(0.05) Vim:SendMouseButtonEvent(p.X,p.Y,0,false,game,1) else Vim:SendMouseButtonEvent(fr.Position.X,fr.Position.Y,0,true,game,1) task.wait(0.05) Vim:SendMouseButtonEvent(fr.Position.X,fr.Position.Y,0,false,game,1) end end end until not loop end) end
 
--- Feedback
-local function showNotification(text,color)
-    local notif = Instance.new("TextLabel")
-    notif.Size = UDim2.new(0,220,0,40)
-    notif.Position = UDim2.new(0.5,-110,0.1,0)
-    notif.BackgroundColor3 = color or Color3.fromRGB(70,70,70)
-    notif.TextColor3 = Color3.new(1,1,1)
-    notif.Text = text
-    notif.TextSize = 18
-    notif.Font = Enum.Font.GothamBold
-    notif.BackgroundTransparency = 0.1
-    notif.Parent = LocalPlayer:WaitForChild("PlayerGui")
-    local uicorner = Instance.new("UICorner",notif)
-    uicorner.CornerRadius = UDim.new(0,12)
-    TweenService:Create(notif,TweenInfo.new(0.5),{Position=UDim2.new(0.5,-110,0.05,0)}):Play()
-    task.delay(1.5,function()
-        TweenService:Create(notif,TweenInfo.new(0.5),{Position=UDim2.new(0.5,-110,0.01,0);Transparency=1}):Play()
-        task.wait(0.5)
-        notif:Destroy()
-    end)
-end
+RS.RenderStepped:Connect(function() if isRec then table.insert(frames,{Type="Camera",CFrame=C.CFrame,Time=tick()}) end end)
+UIS.InputBegan:Connect(function(input,gpe) if isRec and not gpe then if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then local gui=nil local mp=input.Position for _,g in pairs(LP.PlayerGui:GetDescendants()) do if g:IsA("GuiObject") and g.AbsolutePosition and g.AbsoluteSize then local pos=g.AbsolutePosition local sz=g.AbsoluteSize if mp.X>=pos.X and mp.X<=pos.X+sz.X and mp.Y>=pos.Y and mp.Y<=pos.Y+sz.Y then gui=g break end end end table.insert(frames,{Type="Click",Position=input.Position,GuiObject=gui,Time=tick()}) end end end)
 
--- Gravação
-local function startRecording()
-    isRecording = true
-    recordedFrames = {}
-    recordStartTime = tick()
-    showNotification("🎬 Gravação iniciada",Color3.fromRGB(70,130,180))
-end
+-- GUI
+local SG=Instance.new("ScreenGui",LP:WaitForChild("PlayerGui"))
+local F=Instance.new("Frame",SG)
+F.Size=UDim2.new(0,500,0,300);F.Position=UDim2.new(0.5,-250,0.5,-150);F.BackgroundColor3=Color3.fromRGB(28,28,28);F.BorderSizePixel=0
+local UC=Instance.new("UICorner",F);UC.CornerRadius=UDim.new(0,18)
+local US=Instance.new("UIStroke",F);US.Thickness=2;US.Color=Color3.fromRGB(90,90,90)
+local Timer=Instance.new("TextLabel",F);Timer.Size=UDim2.new(0.2,0,0,36);Timer.Position=UDim2.new(0.05,0,0.05,0);Timer.BackgroundTransparency=1;Timer.Text="00:00";Timer.TextColor3=Color3.fromRGB(255,255,255);Timer.TextSize=20;Timer.Font=Enum.Font.GothamBold;Timer.TextXAlignment=Enum.TextXAlignment.Left
 
-local function stopRecording()
-    isRecording = false
-    showNotification("⏹ Gravação parada",Color3.fromRGB(220,50,50))
-end
+spawn(function() while true do if isRec then Timer.Text=fmtTime(tick()-recStart) end task.wait(0.2) end end)
 
--- Reprodução respeitando tempo
-local function playRecording(frames,loop)
-    if not frames or #frames==0 then return end
-    task.spawn(function()
-        repeat
-            local startTime = tick()
-            for i,frame in ipairs(frames) do
-                local waitTime = (i>1 and frame.Time - frames[i-1].Time) or 0
-                local delta = waitTime - (tick()-startTime)
-                if delta>0 then task.wait(delta) end
-                if frame.Type=="Camera" then
-                    Camera.CFrame = frame.CFrame
-                elseif frame.Type=="Click" then
-                    if frame.GuiObject then
-                        local pos = frame.GuiObject.AbsolutePosition + frame.GuiObject.AbsoluteSize/2
-                        Vim:SendMouseButtonEvent(pos.X,pos.Y,0,true,game,1)
-                        task.wait(0.05)
-                        Vim:SendMouseButtonEvent(pos.X,pos.Y,0,false,game,1)
-                    else
-                        Vim:SendMouseButtonEvent(frame.Position.X,frame.Position.Y,0,true,game,1)
-                        task.wait(0.05)
-                        Vim:SendMouseButtonEvent(frame.Position.X,frame.Position.Y,0,false,game,1)
-                    end
-                end
-            end
-        until not loop
-    end)
-end
+local function btn(text,x,y,cb) local b=Instance.new("TextButton",F) b.Size=UDim2.new(0.18,0,0,36);b.Position=UDim2.new(0,x,0,y);b.BackgroundColor3=Color3.fromRGB(60,60,60);b.Text=text;b.TextColor3=Color3.fromRGB(255,255,255);b.Font=Enum.Font.GothamBold;b.TextSize=18;b.AutoButtonColor=true;local c=Instance.new("UICorner",b);c.CornerRadius=UDim.new(0,12);b.MouseButton1Click:Connect(cb) end
 
--- Captura câmera
-RunService.RenderStepped:Connect(function()
-    if isRecording then
-        table.insert(recordedFrames,{Type="Camera",CFrame=Camera.CFrame,Time=tick()})
-    end
-end)
+btn("▶ Gravar",20,60,startRec)
+btn("■ Parar",120,60,stopRec)
+btn("▶ Reproduzir",220,60,function() playRec(frames,false) end)
+btn("⟳ Loop Inf.",320,60,function() playRec(frames,true) end)
 
--- Captura cliques/toques e GuiObjects
-UserInputService.InputBegan:Connect(function(input,gpe)
-    if isRecording and not gpe then
-        if input.UserInputType==Enum.UserInputType.MouseButton1 or input.UserInputType==Enum.UserInputType.Touch then
-            local guiObj = nil
-            local mousePos = input.Position
-            for _, gui in pairs(LocalPlayer.PlayerGui:GetDescendants()) do
-                if gui:IsA("GuiObject") and gui.AbsolutePosition and gui.AbsoluteSize then
-                    local pos = gui.AbsolutePosition
-                    local size = gui.AbsoluteSize
-                    if mousePos.X >= pos.X and mousePos.X <= pos.X+size.X and mousePos.Y >= pos.Y and mousePos.Y <= pos.Y+size.Y then
-                        guiObj = gui
-                        break
-                    end
-                end
-            end
-            table.insert(recordedFrames,{Type="Click",Position=input.Position,GuiObject=guiObj,Time=tick()})
-        end
-    end
-end)
+local SaveBox=Instance.new("TextBox",F);SaveBox.Size=UDim2.new(0.45,0,0,36);SaveBox.Position=UDim2.new(0.05,0,0,200);SaveBox.PlaceholderText="Nome da gravação...";SaveBox.TextColor3=Color3.fromRGB(255,255,255);SaveBox.BackgroundColor3=Color3.fromRGB(50,50,50);Instance.new("UICorner",SaveBox).CornerRadius=UDim.new(0,12)
 
--- GUI Panorâmica
-local ScreenGui = Instance.new("ScreenGui",LocalPlayer:WaitForChild("PlayerGui"))
-local Frame = Instance.new("Frame")
-Frame.Size = UDim2.new(0,500,0,300)
-Frame.Position = UDim2.new(0.5,-250,0.5,-150)
-Frame.BackgroundColor3 = Color3.fromRGB(28,28,28)
-Frame.BorderSizePixel = 0
-Frame.Parent = ScreenGui
-local UICorner = Instance.new("UICorner",Frame)
-UICorner.CornerRadius = UDim.new(0,18)
-local UIStroke = Instance.new("UIStroke",Frame)
-UIStroke.Thickness = 2
-UIStroke.Color = Color3.fromRGB(90,90,90)
+local Scroll=Instance.new("ScrollingFrame",F);Scroll.Size=UDim2.new(0.9,0,0,80);Scroll.Position=UDim2.new(0.05,0,0,240);Scroll.BackgroundColor3=Color3.fromRGB(35,35,35);Scroll.ScrollBarThickness=8;local UIList=Instance.new("UIListLayout",Scroll);UIList.SortOrder=Enum.SortOrder.LayoutOrder;UIList.Padding=UDim.new(0,6)
 
--- Timer Label
-local TimerLabel = Instance.new("TextLabel",Frame)
-TimerLabel.Size = UDim2.new(0.2,0,0,36)
-TimerLabel.Position = UDim2.new(0.05,0,0.05,0)
-TimerLabel.BackgroundTransparency = 1
-TimerLabel.Text = "00:00"
-TimerLabel.TextColor3 = Color3.fromRGB(255,255,255)
-TimerLabel.TextSize = 20
-TimerLabel.Font = Enum.Font.GothamBold
-TimerLabel.TextXAlignment = Enum.TextXAlignment.Left
-
-spawn(function()
-    while true do
-        if isRecording then
-            TimerLabel.Text = formatTime(tick()-recordStartTime)
-        end
-        task.wait(0.2)
-    end
-end)
-
--- Botão helper
-local function createButton(parent,text,posX,posY,callback)
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0.18,0,0,36)
-    btn.Position = UDim2.new(0,posX,0,posY)
-    btn.BackgroundColor3 = Color3.fromRGB(60,60,60)
-    btn.Text = text
-    btn.TextColor3 = Color3.fromRGB(255,255,255)
-    btn.Font = Enum.Font.GothamBold
-    btn.TextSize = 18
-    btn.AutoButtonColor = true
-    btn.Parent = parent
-    local c = Instance.new("UICorner",btn)
-    c.CornerRadius = UDim.new(0,12)
-    btn.MouseButton1Click:Connect(function()
-        btn.BackgroundColor3 = Color3.fromRGB(90,90,90)
-        task.wait(0.08)
-        btn.BackgroundColor3 = Color3.fromRGB(60,60,60)
-        callback()
-    end)
-    return btn
-end
-
--- Botões
-createButton(Frame,"▶ Gravar",20,60,startRecording)
-createButton(Frame,"■ Parar",120,60,stopRecording)
-createButton(Frame,"▶ Reproduzir",220,60,function() playRecording(recordedFrames,false) end)
-createButton(Frame,"⟳ Loop Inf.",320,60,function() playRecording(recordedFrames,true) end)
-
--- Input salvar
-local SaveBox = Instance.new("TextBox",Frame)
-SaveBox.Size = UDim2.new(0.45,0,0,36)
-SaveBox.Position = UDim2.new(0.05,0,0,200)
-SaveBox.PlaceholderText = "Nome da gravação..."
-SaveBox.TextColor3 = Color3.fromRGB(255,255,255)
-SaveBox.BackgroundColor3 = Color3.fromRGB(50,50,50)
-local cornerInput = Instance.new("UICorner",SaveBox)
-cornerInput.CornerRadius = UDim.new(0,12)
-
--- Lista de gravações
-local Scroll = Instance.new("ScrollingFrame",Frame)
-Scroll.Size = UDim2.new(0.9,0,0,80)
-Scroll.Position = UDim2.new(0.05,0,0,240)
-Scroll.BackgroundColor3 = Color3.fromRGB(35,35,35)
-Scroll.ScrollBarThickness = 8
-local UIList = Instance.new("UIListLayout",Scroll)
-UIList.SortOrder = Enum.SortOrder.LayoutOrder
-UIList.Padding = UDim.new(0,6)
-
--- Refresh lista
-function refreshList()
+local function refresh()
     Scroll:ClearAllChildren()
-    UIList.Parent = Scroll
-    for name,frames in pairs(savedRecordings) do
-        local item = Instance.new("Frame",Scroll)
-        item.Size = UDim2.new(1,0,0,36)
-        item.BackgroundTransparency = 1
-        local label = Instance.new("TextLabel",item)
-        label.Size = UDim2.new(0.5,0,1,0)
-        label.Text = name
-        label.TextColor3 = Color3.fromRGB(255,255,255)
-        label.BackgroundTransparency = 1
-        label.Font = Enum.Font.GothamBold
-        label.TextSize = 16
-        -- Play normal
-        local playBtn = Instance.new("TextButton",item)
-        playBtn.Size = UDim2.new(0.15,0,1,0)
-        playBtn.Position = UDim2.new(0.5,0,0,0)
-        playBtn.Text = "▶"
-        playBtn.BackgroundColor3 = Color3.fromRGB(70,130,70)
-        local c1 = Instance.new("UICorner",playBtn); c1.CornerRadius = UDim.new(0,8)
-        playBtn.MouseButton1Click:Connect(function() playRecording(frames,false) end)
-        -- Loop
-        local loopBtn = Instance.new("TextButton",item)
-        loopBtn.Size = UDim2.new(0.15,0,1,0)
-        loopBtn.Position = UDim2.new(0.65,0,0,0)
-        loopBtn.Text = "⟳"
-        loopBtn.BackgroundColor3 = Color3.fromRGB(180,90,90)
-        local c2 = Instance.new("UICorner",loopBtn); c2.CornerRadius = UDim.new(0,8)
-        loopBtn.MouseButton1Click:Connect(function() playRecording(frames,true) end)
-        -- Delete
-        local delBtn = Instance.new("TextButton",item)
-        delBtn.Size = UDim2.new(0.15,0,1,0)
-        delBtn.Position = UDim2.new(0.8,0,0,0)
-        delBtn.Text = "❌"
-        delBtn.BackgroundColor3 = Color3.fromRGB(150,50,50)
-        local c3 = Instance.new("UICorner",delBtn); c3.CornerRadius = UDim.new(0,8)
-        delBtn.MouseButton1Click:Connect(function()
-            savedRecordings[name] = nil
-            refreshList()
-        end)
+    UIList.Parent=Scroll
+    for n,fm in pairs(saved) do
+        local it=Instance.new("Frame",Scroll);it.Size=UDim2.new(1,0,0,36);it.BackgroundTransparency=1
+        local lbl=Instance.new("TextLabel",it);lbl.Size=UDim2.new(0.5,0,1,0);lbl.Text=n;lbl.TextColor3=Color3.fromRGB(255,255,255);lbl.BackgroundTransparency=1;lbl.Font=Enum.Font.GothamBold;lbl.TextSize=16
+        local p=Instance.new("TextButton",it);p.Size=UDim2.new(0.15,0,1,0);p.Position=UDim2.new(0.5,0,0,0);p.Text="▶";p.BackgroundColor3=Color3.fromRGB(70,130,70);Instance.new("UICorner",p).CornerRadius=UDim.new(0,8);p.MouseButton1Click:Connect(function() playRec(fm,false) end)
+        local l=Instance.new("TextButton",it);l.Size=UDim2.new(0.15,0,1,0);l.Position=UDim2.new(0.65,0,0,0);l.Text="⟳";l.BackgroundColor3=Color3.fromRGB(180,90,90);Instance.new("UICorner",l).CornerRadius=UDim.new(0,8);l.MouseButton1Click:Connect(function() playRec(fm,true) end)
+        local d=Instance.new("TextButton",it);d.Size=UDim2.new(0.15,0,1,0);d.Position=UDim2.new(0.8,0,0,0);d.Text="❌";d.BackgroundColor3=Color3.fromRGB(150,50,50);Instance.new("UICorner",d).CornerRadius=UDim.new(0,8);d.MouseButton1Click:Connect(function() saved[n]=nil;refresh() end)
     end
 end
 
--- Botão salvar
-createButton(Frame,"💾 Salvar",380,200,function()
-    local name = SaveBox.Text
-    if name~="" and #recordedFrames>0 then
-        savedRecordings[name] = table.clone(recordedFrames)
-        SaveBox.Text = ""
-        refreshList()
-        showNotification("💾 Gravação salva: "..name)
+btn("💾 Salvar",380,200,function()
+    local n=SaveBox.Text
+    if n~="" and #frames>0 then
+        saved[n]=table.clone(frames)
+        SaveBox.Text=""
+        refresh()
+        notif("💾 Gravação salva: "..n)
     end
 end)
