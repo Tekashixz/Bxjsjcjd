@@ -2,12 +2,12 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
-local UserInputService = game:GetService("UserInputService")
 
 -- Variáveis
 local isRecording = false
 local recordedFrames = {}
-local savedReplays = {} -- { [nome] = {frames} }
+local recordings = {} -- Armazena gravações salvas {nome = {frames}}
+local currentRecording = nil
 local menuVisible = true
 
 -- Funções principais
@@ -51,68 +51,56 @@ end)
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
--- Painel
+-- Container principal
 local Frame = Instance.new("Frame")
-Frame.Size = UDim2.new(0, 320, 0, 400)
-Frame.Position = UDim2.new(1, -340, 1, -420)
-Frame.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
+Frame.Size = UDim2.new(0, 300, 0, 400)
+Frame.Position = UDim2.new(0.5, -150, 0.5, -200)
+Frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
 Frame.BorderSizePixel = 0
+Frame.Visible = true
 Frame.Parent = ScreenGui
 
 local UICorner = Instance.new("UICorner")
-UICorner.CornerRadius = UDim.new(0, 12)
+UICorner.CornerRadius = UDim.new(0, 14)
 UICorner.Parent = Frame
-
--- Sombra
-local Shadow = Instance.new("ImageLabel")
-Shadow.Name = "Shadow"
-Shadow.Parent = Frame
-Shadow.BackgroundTransparency = 1
-Shadow.Position = UDim2.new(0, -15, 0, -15)
-Shadow.Size = UDim2.new(1, 30, 1, 30)
-Shadow.Image = "rbxassetid://1316045217"
-Shadow.ImageTransparency = 0.4
-Shadow.ScaleType = Enum.ScaleType.Slice
-Shadow.SliceCenter = Rect.new(10, 10, 118, 118)
-Shadow.ZIndex = -1
 
 -- Título
 local Title = Instance.new("TextLabel")
 Title.Parent = Frame
-Title.Size = UDim2.new(1, -40, 0, 40)
-Title.Position = UDim2.new(0, 10, 0, 0)
+Title.Size = UDim2.new(1, 0, 0, 40)
 Title.BackgroundTransparency = 1
-Title.Text = "🎥 Recorder Avançado"
-Title.TextColor3 = Color3.new(1,1,1)
-Title.TextSize = 20
+Title.Text = "🎥 Recorder Menu"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.TextSize = 22
 Title.Font = Enum.Font.GothamBold
-Title.TextXAlignment = Enum.TextXAlignment.Left
 
 -- Botão minimizar
 local MinBtn = Instance.new("TextButton")
 MinBtn.Parent = Frame
 MinBtn.Size = UDim2.new(0, 30, 0, 30)
-MinBtn.Position = UDim2.new(1, -35, 0, 5)
+MinBtn.Position = UDim2.new(1, -40, 0, 5)
 MinBtn.BackgroundColor3 = Color3.fromRGB(55,55,55)
 MinBtn.Text = "-"
 MinBtn.TextColor3 = Color3.new(1,1,1)
 MinBtn.Font = Enum.Font.GothamBold
 MinBtn.TextSize = 20
+
 local cornerMin = Instance.new("UICorner")
 cornerMin.CornerRadius = UDim.new(0, 8)
 cornerMin.Parent = MinBtn
 
--- Botão flutuante (quando menu escondido)
+-- Botão flutuante quando minimizado
 local FloatBtn = Instance.new("TextButton")
 FloatBtn.Parent = ScreenGui
-FloatBtn.Size = UDim2.new(0, 50, 0, 50)
-FloatBtn.Position = UDim2.new(1, -60, 1, -120)
+FloatBtn.Size = UDim2.new(0, 55, 0, 55)
+FloatBtn.Position = UDim2.new(0, 20, 1, -80)
 FloatBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
 FloatBtn.Text = "⚙"
 FloatBtn.TextColor3 = Color3.new(1,1,1)
 FloatBtn.Font = Enum.Font.GothamBold
-FloatBtn.TextSize = 24
+FloatBtn.TextSize = 26
 FloatBtn.Visible = false
+
 local cornerFloat = Instance.new("UICorner")
 cornerFloat.CornerRadius = UDim.new(1, 0)
 cornerFloat.Parent = FloatBtn
@@ -120,96 +108,124 @@ cornerFloat.Parent = FloatBtn
 -- Função helper para botões
 local function createButton(text, posY, callback)
 	local btn = Instance.new("TextButton")
-	btn.Size = UDim2.new(1, -20, 0, 40)
-	btn.Position = UDim2.new(0, 10, 0, posY)
-	btn.BackgroundColor3 = Color3.fromRGB(55, 55, 60)
+	btn.Size = UDim2.new(0.45, -10, 0, 40)
+	btn.Position = UDim2.new(0.05, 0, 0, posY)
+	btn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
 	btn.TextColor3 = Color3.new(1,1,1)
 	btn.TextSize = 18
 	btn.Font = Enum.Font.GothamBold
 	btn.Text = text
 	btn.AutoButtonColor = true
+
 	local corner = Instance.new("UICorner")
 	corner.CornerRadius = UDim.new(0, 8)
 	corner.Parent = btn
+
 	btn.MouseButton1Click:Connect(callback)
 	btn.Parent = Frame
+
 	return btn
 end
 
 -- Botões principais
-local recordBtn = createButton("▶ Gravar", 50, function()
-	startRecording()
+local recordBtn = createButton("▶ Gravar", 50, startRecording)
+recordBtn.Size = UDim2.new(0.45, -10, 0, 40)
+
+local stopBtn = createButton("⏹ Parar", 50, stopRecording)
+stopBtn.Position = UDim2.new(0.5, 5, 0, 50)
+
+local saveBtn = createButton("💾 Salvar", 100, function()
+	if #recordedFrames == 0 then return end
+	-- Caixa de texto para nome
+	local input = Instance.new("TextBox")
+	input.Parent = Frame
+	input.Size = UDim2.new(0.9, 0, 0, 35)
+	input.Position = UDim2.new(0.05, 0, 0, 150)
+	input.PlaceholderText = "Nome da gravação..."
+	input.Text = ""
+	input.TextColor3 = Color3.new(1,1,1)
+	input.BackgroundColor3 = Color3.fromRGB(40,40,40)
+	input.Font = Enum.Font.GothamBold
+	input.TextSize = 18
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 8)
+	corner.Parent = input
+
+	input.FocusLost:Connect(function(enter)
+		if enter and input.Text ~= "" then
+			recordings[input.Text] = table.clone(recordedFrames)
+			input:Destroy()
+		else
+			input:Destroy()
+		end
+	end)
 end)
+saveBtn.Size = UDim2.new(0.9, 0, 0, 40)
+saveBtn.Position = UDim2.new(0.05, 0, 0, 100)
 
-local stopBtn = createButton("■ Parar", 100, function()
-	stopRecording()
-end)
+-- Lista de gravações
+local ScrollingFrame = Instance.new("ScrollingFrame")
+ScrollingFrame.Parent = Frame
+ScrollingFrame.Size = UDim2.new(0.9, 0, 0, 120)
+ScrollingFrame.Position = UDim2.new(0.05, 0, 0, 190)
+ScrollingFrame.BackgroundColor3 = Color3.fromRGB(35,35,35)
+ScrollingFrame.BorderSizePixel = 0
+ScrollingFrame.ScrollBarThickness = 6
+ScrollingFrame.CanvasSize = UDim2.new(0,0,0,0)
 
--- Caixa de texto para nome
-local NameBox = Instance.new("TextBox")
-NameBox.Size = UDim2.new(1, -20, 0, 40)
-NameBox.Position = UDim2.new(0, 10, 0, 150)
-NameBox.PlaceholderText = "Nome do Replay..."
-NameBox.Text = ""
-NameBox.BackgroundColor3 = Color3.fromRGB(50, 50, 55)
-NameBox.TextColor3 = Color3.new(1,1,1)
-NameBox.Font = Enum.Font.Gotham
-NameBox.TextSize = 18
-local cornerBox = Instance.new("UICorner")
-cornerBox.CornerRadius = UDim.new(0, 8)
-cornerBox.Parent = NameBox
-NameBox.Parent = Frame
+local UIListLayout = Instance.new("UIListLayout")
+UIListLayout.Parent = ScrollingFrame
+UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+UIListLayout.Padding = UDim.new(0,5)
 
--- Botão salvar replay
-local saveBtn = createButton("💾 Salvar Replay", 200, function()
-	local name = NameBox.Text
-	if name ~= "" and #recordedFrames > 0 then
-		savedReplays[name] = table.clone(recordedFrames)
-		NameBox.Text = ""
-	end
-end)
+-- Atualizar lista
+local function updateList()
+	ScrollingFrame:ClearAllChildren()
+	UIListLayout.Parent = ScrollingFrame
+	for name, frames in pairs(recordings) do
+		local item = Instance.new("TextButton")
+		item.Size = UDim2.new(1, -5, 0, 30)
+		item.BackgroundColor3 = Color3.fromRGB(55,55,55)
+		item.Text = name
+		item.TextColor3 = Color3.new(1,1,1)
+		item.Font = Enum.Font.GothamBold
+		item.TextSize = 18
+		item.Parent = ScrollingFrame
 
--- Lista de replays
-local ReplayList = Instance.new("ScrollingFrame")
-ReplayList.Size = UDim2.new(1, -20, 0, 150)
-ReplayList.Position = UDim2.new(0, 10, 0, 250)
-ReplayList.BackgroundColor3 = Color3.fromRGB(45,45,50)
-ReplayList.ScrollBarThickness = 6
-ReplayList.CanvasSize = UDim2.new(0,0,0,0)
-ReplayList.Parent = Frame
-local cornerList = Instance.new("UICorner")
-cornerList.CornerRadius = UDim.new(0, 8)
-cornerList.Parent = ReplayList
-
--- Atualizar lista de replays
-local function refreshReplayList()
-	ReplayList:ClearAllChildren()
-	local y = 0
-	for name, frames in pairs(savedReplays) do
-		local btn = Instance.new("TextButton")
-		btn.Size = UDim2.new(1, -10, 0, 40)
-		btn.Position = UDim2.new(0, 5, 0, y)
-		btn.BackgroundColor3 = Color3.fromRGB(65, 65, 70)
-		btn.TextColor3 = Color3.new(1,1,1)
-		btn.TextSize = 16
-		btn.Font = Enum.Font.GothamBold
-		btn.Text = "▶ "..name
 		local corner = Instance.new("UICorner")
 		corner.CornerRadius = UDim.new(0, 6)
-		corner.Parent = btn
-		btn.MouseButton1Click:Connect(function()
-			playRecording(frames, false)
+		corner.Parent = item
+
+		item.MouseButton1Click:Connect(function()
+			currentRecording = name
 		end)
-		btn.Parent = ReplayList
-		y = y + 45
 	end
-	ReplayList.CanvasSize = UDim2.new(0,0,0,y)
+	ScrollingFrame.CanvasSize = UDim2.new(0,0,0,UIListLayout.AbsoluteContentSize.Y)
 end
 
--- Atualiza lista sempre que salvar
-saveBtn.MouseButton1Click:Connect(refreshReplayList)
+-- Botões de play e loop
+local playBtn = createButton("▶ Play", 320, function()
+	if currentRecording and recordings[currentRecording] then
+		playRecording(recordings[currentRecording], false)
+	end
+end)
+playBtn.Size = UDim2.new(0.45, -10, 0, 40)
 
--- Minimizar / Restaurar
+local loopBtn = createButton("🔄 Loop", 320, function()
+	if currentRecording and recordings[currentRecording] then
+		playRecording(recordings[currentRecording], true)
+	end
+end)
+loopBtn.Position = UDim2.new(0.5, 5, 0, 320)
+
+-- Atualizar lista quando salvar
+local oldSave = saveBtn.MouseButton1Click
+saveBtn.MouseButton1Click:Connect(function()
+	updateList()
+end)
+
+-- Alternar menu
 MinBtn.MouseButton1Click:Connect(function()
 	menuVisible = false
 	Frame.Visible = false
@@ -220,4 +236,5 @@ FloatBtn.MouseButton1Click:Connect(function()
 	menuVisible = true
 	Frame.Visible = true
 	FloatBtn.Visible = false
+	updateList()
 end)
